@@ -148,13 +148,22 @@ class BIOS_LZ77:
           Bit 8-15  Disp LSBs
         """
         
+        # map each byte to a list of indices where this byte is seen to speed up compression
+        memory = [[] for _ in range(256)]
+        
         while i < self.inl:
             cur = self.inb[i]
+            
             # look for match
             best_match = (2, -1) # (length, disp)
             
-            # this following part could be sped up
-            for disp in range(1 if self.vram else 0, 4096):
+            for pos in reversed(memory[cur]): # only consider positions with the same byte as cur
+                disp = i-pos-1
+                if disp < (1 if self.vram else 0):
+                    continue
+                if disp >= 4096:
+                    break
+                
                 match_len = 0
                 for j in range(18):
                     if not (0 <= (i-disp-1+j) < self.inl):
@@ -174,10 +183,13 @@ class BIOS_LZ77:
             
             if best_match[1] == -1:
                 # no match
+                memory[cur].append(i)
                 self.blocks.append(BIOS_LZ77_RawBlock(cur))
                 i += 1
             else:
                 # match
+                for j in range(i, i+best_match[0]):
+                    memory[self.inb[j]].append(j)
                 self.blocks.append(BIOS_LZ77_BackReferenceBlock(best_match[1], best_match[0]))
                 i += best_match[0]
 
